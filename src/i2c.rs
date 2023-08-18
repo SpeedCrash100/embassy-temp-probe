@@ -1,3 +1,4 @@
+use defmt::error;
 use embassy_stm32::bind_interrupts;
 use embassy_stm32::dma::NoDma;
 use embassy_stm32::i2c::{I2c, InterruptHandler};
@@ -63,8 +64,13 @@ pub async fn i2c_handle_commands(mut bus: I2CBus) {
 }
 
 async fn handle_write(bus: &mut I2CBus, address: u8, data: I2cDataBuffer) {
-    bus.blocking_write(address, data.as_slice()).ok(); // TODO: handle error
-    I2C_RESULT.send(I2cResult::Writen).await;
+    match bus.blocking_write(address, data.as_slice()) {
+        Ok(()) => I2C_RESULT.send(I2cResult::Writen).await,
+        Err(e) => {
+            error!("Failed to write into I2C bus: {}", e);
+            I2C_RESULT.send(I2cResult::Error).await
+        }
+    }
 }
 
 async fn handle_read(bus: &mut I2CBus, address: u8, read_size: usize) {
@@ -75,8 +81,13 @@ async fn handle_read(bus: &mut I2CBus, address: u8, read_size: usize) {
         return;
     }
 
-    bus.blocking_read(address, data.as_mut()).ok(); // TODO: handle error
-    I2C_RESULT.send(I2cResult::Read(data)).await;
+    match bus.blocking_read(address, data.as_mut()) {
+        Ok(()) => I2C_RESULT.send(I2cResult::Read(data)).await,
+        Err(e) => {
+            error!("Failed to read drom I2C bus: {}", e);
+            I2C_RESULT.send(I2cResult::Error).await
+        }
+    }
 }
 
 async fn handle_write_read(bus: &mut I2CBus, address: u8, data: I2cDataBuffer, read_size: usize) {
@@ -86,7 +97,11 @@ async fn handle_write_read(bus: &mut I2CBus, address: u8, data: I2cDataBuffer, r
         return;
     }
 
-    bus.blocking_write_read(address, data.as_slice(), data_to_recv.as_mut())
-        .ok(); // TODO: handle error
-    I2C_RESULT.send(I2cResult::Read(data_to_recv)).await;
+    match bus.blocking_write_read(address, data.as_slice(), data_to_recv.as_mut()) {
+        Ok(()) => I2C_RESULT.send(I2cResult::Read(data_to_recv)).await,
+        Err(e) => {
+            error!("Failed to write into I2C bus and read: {}", e);
+            I2C_RESULT.send(I2cResult::Error).await
+        }
+    }
 }
