@@ -9,6 +9,7 @@ use embassy_stm32::i2c::{Config, I2c};
 use embassy_stm32::time::Hertz;
 use embassy_time::Duration;
 
+mod filter;
 mod i2c;
 mod lm75b;
 
@@ -18,7 +19,7 @@ use {defmt_rtt as _, panic_probe as _}; // global logger
 async fn temp_printer() {
     loop {
         let temp = lm75b::LM75B_TEMPERATURE.recv().await;
-        info!("Temperature: {}", temp);
+        info!("Temperature: {:?}", temp);
     }
 }
 

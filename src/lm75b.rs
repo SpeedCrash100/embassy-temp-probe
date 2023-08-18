@@ -2,7 +2,10 @@ use defmt::error;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 use embassy_time::{Duration, Timer};
 
-use crate::i2c::{I2cCommand, I2cResult, I2C_COMMAND, I2C_RESULT};
+use crate::{
+    filter::{Filter, Median, MovingAvg},
+    i2c::{I2cCommand, I2cResult, I2C_COMMAND, I2C_RESULT},
+};
 
 const CHANNEL_SIZE: usize = 1;
 pub static LM75B_TEMPERATURE: Channel<CriticalSectionRawMutex, f32, CHANNEL_SIZE> = Channel::new();
@@ -19,6 +22,9 @@ fn convert_raw_to_temperature(msb: u8, lsb: u8) -> f32 {
 
 #[embassy_executor::task]
 pub async fn lm75b_grab_temperature(grab_interval: Duration) {
+    let mut median_filter: Median<5> = Median::default();
+    let mut movavg_filter: MovingAvg<15> = MovingAvg::default();
+
     loop {
         let mut data = heapless::Vec::new();
         data.push(TEMPERATURE_REGISTER).ok(); // Ok -> buffer always have place for 1 byte
@@ -36,7 +42,9 @@ pub async fn lm75b_grab_temperature(grab_interval: Duration) {
         match result {
             I2cResult::Read(recv) => {
                 let temperature = convert_raw_to_temperature(recv[0], recv[1]);
-                LM75B_TEMPERATURE.send(temperature).await;
+                median_filter.insert(temperature);
+                movavg_filter.insert(median_filter.filtered());
+                LM75B_TEMPERATURE.send(movavg_filter.filtered()).await;
             }
             _ => {
                 error!("Invalid result recieved");
