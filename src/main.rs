@@ -12,6 +12,7 @@ use embassy_time::Duration;
 mod filter;
 mod i2c;
 mod lm75b;
+mod p9813;
 
 use {defmt_rtt as _, panic_probe as _}; // global logger
 
@@ -19,7 +20,22 @@ use {defmt_rtt as _, panic_probe as _}; // global logger
 async fn temp_printer() {
     loop {
         let temp = lm75b::LM75B_TEMPERATURE.recv().await;
-        info!("Temperature: {:?}", temp);
+
+        let temp_cold = 20.0;
+        let temp_hot = 30.0;
+
+        let mut r = (temp - temp_cold) / (temp_hot - temp_cold) * 255.0;
+        if r < 0.0 {
+            r = 0.0;
+        }
+        if r > 255.0 {
+            r = 255.0;
+        }
+
+        let r = r as i32 / 2;
+
+        info!("Temperature: {:?}, r: {:?}", temp, r);
+        p9813::P9813_SET_COLOR.send((r as u8, 30, 255)).await;
     }
 }
 
@@ -41,6 +57,10 @@ async fn main(spawner: Spawner) {
     spawner.spawn(i2c::i2c_handle_commands(i2c)).unwrap();
     spawner
         .spawn(lm75b::lm75b_grab_temperature(Duration::from_secs(1)))
+        .unwrap();
+
+    spawner
+        .spawn(p9813::handle_p9813(spawner, p.PB10.into(), p.PB4.into()))
         .unwrap();
 
     spawner.spawn(temp_printer()).unwrap();
